@@ -2,7 +2,6 @@
 # A command to encrypt and decrypt files and directories
 
 # Global vars
-
 TAG_VERSION='v0.1'
 PROJECT_GIT='https://github.com/theraulpareja/secrets.git'
 USAGE="
@@ -18,11 +17,22 @@ And target file must be relative to your current path or provide the full path
 CONFIRM="
 Please confirm, by typing wether:
 - 'd' to delete the original $FILE (recomended)
-- 'q' to quit leaving the original $FILE unencrypted >>"
+- 'q' to quit leaving the original $FILE unencrypted
+>> "
 SECRETS_HOME="$HOME/.secrets"
+NOSECRETS="There are no gpg encrypted tar.gz in $SECRETS_HOME"
+SELECT_MESSAGE="
+Select a number from the list above
+
+>> "
+ENSURE="
+Please confirm you want to decrypt the tar.gz, by typing wether:
+- 'y' to retrieve the encrypted tar.gz archive
+- 'q' to quit
+
+ >> "
 
 # Functions
-
 confirmation () {
     while true; do
 		read -p "$CONFIRM" choice
@@ -45,22 +55,55 @@ confirmation () {
 }
 
 showsecrets () {
-    nosecrets="There are no gpg encrypted tar.gz in $SECRETS_HOME"
     if [[ ! $(find $SECRETS_HOME -type f -name '*.gpg') ]]; then
-        echo "$nosecrets"
+        echo "$NOSECRETS"
         exit 10
     fi
-
     counter=0
+    options=()
+    echo -e "\nAvailable secrets\n"
     for i in $(find $SECRETS_HOME -type f -name '*.gpg'); do
+        echo "$counter -) $(basename $i)" 
+        options+=($(basename $i))
         counter=$((counter + 1))
-        echo "$counter -) $(basename $i)"
     done
-    exit 0
+    # echo "options value are ${options[*]}"
+    while true; do
+        read -p "$SELECT_MESSAGE" choice
+            if [[ $choice -ge 0 && $choice -le $counter ]]; then
+                secret_file=${options[$choice]}
+                # echo "You selected ${options[$choice]}"
+                echo -e "\nqYou selected $secret_file"
+                while true; do
+                    read -p "$ENSURE" confirmation_choice
+                    case $confirmation_choice in
+                    'y')
+                        echo "Decrypting"
+                        gpg --output $SECRETS_HOME/"${secret_file%.*}" \
+                        --decrypt $SECRETS_HOME/$secret_file
+                        echo "File decrypted"
+                        echo "Extracting tar.gz archive"
+                        echo "have to fix the uncompressing path"
+                        tar xzvf $SECRETS_HOME/"${secret_file%.*}"
+                        exit 0
+                        ;;
+                    'q')
+                        echo -e "\nCancelling operations, bye"
+                        exit 0
+                        ;;
+                    *)
+                        echo "$ENSURE"
+                        ;;
+                    esac
+                done
+            else
+                echo "Invalid choice please: "$SELECT_MESSAGE""
+            fi
+    done
+exit 0
 }
 
 # Main
-
 if [[ ! -d "$SECRETS_HOME" ]]; then
     echo "Creating $SECRETS_HOME"
     mkdir -p $SECRETS_HOME
@@ -96,24 +139,11 @@ while [[ $# -gt 0 ]]; do
             fi
             ;;
             -d)
-            showsecrets
-            # FILE=$2
-            # SFILE=$FILE.tar.gz.gpg
-            # Test if encrypted tar.gz.pgp archive exists
-            # if [[ -f $SFILE ]]; then
-            #     gpg --output $FILE --decrypt $SFILE
-            #     echo 'File decrypted'
-            #     exit 0
-            # else
-            #     echo -e "\tERROR: $FILE does not exists, check path is ok"
-            #     echo -e "\tThe secret should have been created by using"
-            #     echo -e "\t secrets -e FILE"
-            #     exit 2
-            # fi
-            ;;
+                showsecrets
+                ;;
             *)
-            echo "$USAGE"
-            exit 1
+                echo "$USAGE"
+                exit 1
         esac
 done
 echo 'ERROR:Missing option and targe file'
